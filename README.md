@@ -41,8 +41,13 @@ python manage.py createsuperuser # Создайте администратора
 python manage.py runserver
 ```
 
-Админка доступна по URL:
+## Админка доступна по URL:
 [Админка сервиса](http://localhost:8000/admin/)
 p.s. в админке так же предусмотренны логи запросов.
-Начать пользоваться сервисом можно с помощью Swagger:
+
+## Начать пользоваться сервисом можно с помощью Swagger:
 [Swagger](http://localhost:8000/admin/)
+
+
+![Swagger](screenshot/Swagger.png)
+![Django Admin Page](screenshot/django_admin_page.png)
