@@ -1,5 +1,5 @@
 from django.http import JsonResponse
-from .models import WalkOrder, APICall
+from .models import WalkOrder, APICall, Walker
 from django.utils.dateparse import parse_datetime
 from drf_yasg.utils import swagger_auto_schema
 from .serializers import WalkOrderSerializer
@@ -24,32 +24,37 @@ def create_order(request):
     try:
         walk_datetime = parse_datetime(data['walk_datetime'])
         
+        # Проверки времени прогулки
         if walk_datetime.time() < time(7, 0) or walk_datetime.time() >= time(23, 0):
             return Response({'error': 'Прогулка может начинаться с 7 утра до 11 вечера.'}, status=status.HTTP_400_BAD_REQUEST)
         
         if walk_datetime.minute not in [0, 30]:
             return Response({'error': 'Прогулка может начинаться только в начале или в половине часа.'}, status=status.HTTP_400_BAD_REQUEST)
         
-        if walk_datetime.minute == 30 and walk_datetime.time() >= time(22, 30):
-            return Response({'error': 'Прогулка не может закончиться позже 11 вечера.'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        if WalkOrder.objects.filter(walk_datetime__range=(walk_datetime, walk_datetime + timedelta(minutes=30))).exists():
-            return Response({'error': 'На это время уже назначена прогулка.'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        walker = data.get('walker')
-        if walker and WalkOrder.objects.filter(walk_datetime__range=(walk_datetime, walk_datetime + timedelta(minutes=30)), walker=walker).exists():
-            return Response({'error': 'Этот выгульщик уже назначен на прогулку в это время.'}, status=status.HTTP_400_BAD_REQUEST)
-        
+        # Находим первого свободного выгульщика
+        available_walker = Walker.objects.exclude(
+            walkorder__walk_datetime__range=(walk_datetime, walk_datetime + timedelta(minutes=30))
+        ).first()
+
+        if not available_walker:
+            return Response({'error': 'Нет свободных выгульщиков.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Создаем заказ на прогулку
         order = WalkOrder.objects.create(
             apartment_number=data['apartment_number'],
             pet_name=data['pet_name'],
             pet_breed=data['pet_breed'],
             walk_datetime=walk_datetime,
-            walker=walker
+            walker=available_walker
         )
+
+        # Записываем API вызов
         APICall.objects.create(method='create_order', data={'request': data, 'response': {'id': order.id}})
+
+        # Сериализуем данные заказа
         serializer = WalkOrderSerializer(order)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
     except Exception as e:
         # Если исключение возникло до определения data, используем пустой словарь
         APICall.objects.create(method='create_order', data={'request': data or {}, 'response': {'error': str(e)}})
